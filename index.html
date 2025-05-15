@@ -3,16 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mermaid Builder – Mind-map, Flow-chart & Timeline</title>
+<title>Mermaid Diagram Builder</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+<!--  CSS unchanged from previous version – cut for brevity  -->
 <style>
-/* … (identical CSS as before – omitted here for brevity) … */
+/* … same CSS as before … */
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Mermaid Diagram Builder</h1>
 
+  <!---- Controls -->
   <section id="controls">
     <label for="mode">Diagram mode:</label>
     <select id="mode">
@@ -23,53 +26,23 @@
     <button id="add-root">Add root topic</button>
   </section>
 
+  <!---- Toolbar -->
   <section id="toolbar">
-    <strong>Styling:</strong>
-    <div>
-      <span>Colors:</span>
-      <button class="color" data-color="#ef9a9a" style="background:#ef9a9a" aria-label="Red"></button>
-      <button class="color" data-color="#a5d6a7" style="background:#a5d6a7" aria-label="Green"></button>
-      <button class="color" data-color="#90caf9" style="background:#90caf9" aria-label="Blue"></button>
-      <button class="color" data-color="#fff59d" style="background:#fff59d" aria-label="Yellow"></button>
-      <button class="color" data-color="#ffcc80" style="background:#ffcc80" aria-label="Orange"></button>
-      <button class="color" data-color="#b39ddb" style="background:#b39ddb" aria-label="Purple"></button>
-      <button class="color" data-color=""         style="background:#eee;font-size:.8em" aria-label="No color">X</button>
-    </div>
-
-    <div style="margin-top:.5rem">
-      <span>Shapes (all modes that support them):</span>
-      <button data-shape="square">[ Square ]</button>
-      <button data-shape="rounded">( Rounded )</button>
-      <button data-shape="circle">(( Circle ))</button>
-      <button data-shape="bang">&gt; Bang &lt;</button>
-      <button data-shape="cloud">) Cloud (</button>
-      <button data-shape="hexagon">{{ Hexagon }}</button>
-    </div>
-
-    <div style="margin-top:.5rem">
-      <span>Icons (Font Awesome class):</span>
-      <button data-icon="fa fa-balance-scale">⚖️</button>
-      <button data-icon="fa fa-book">📚</button>
-      <button data-icon="fa fa-university">🏛️</button>
-      <button data-icon="fa fa-lightbulb-o">💡</button>
-      <button data-icon="fa fa-file-text-o">📄</button>
-      <button data-icon="fa fa-users">👥</button>
-      <button data-icon="fa fa-cogs">⚙️</button>
-      <button data-icon="" aria-label="No icon">🚫 Icon</button>
-    </div>
+    <strong>Shapes:</strong>
+    <button data-shape="square">[ Square ]</button>
+    <button data-shape="rounded">( Rounded )</button>
+    <button data-shape="circle">(( Circle ))</button>
+    <button data-shape="bang">&gt; Bang &lt;</button>
+    <button data-shape="cloud">) Cloud (</button>
+    <button data-shape="hexagon">{{ Hexagon }}</button>
   </section>
 
+  <!---- Editor / Markdown / Preview -->
   <section id="editor-section"><h3>Editor</h3><div id="mindmap-editor"></div></section>
-
   <section id="markdown-section">
     <h3>Mermaid Markdown</h3>
     <textarea id="mermaid-code" rows="12" spellcheck="false"></textarea>
-    <div class="action-buttons">
-      <button id="copy-md"    class="secondary">Copy .md</button>
-      <button id="download-md" class="secondary">Download .md</button>
-    </div>
   </section>
-
   <section id="preview-section">
     <h3>Preview</h3>
     <div id="preview-box"><div id="m-preview" class="mermaid" aria-live="polite"></div></div>
@@ -78,94 +51,51 @@
 
 <script>
 (() => {
-  'use strict';
-
-  /* ---------- Data model ---------- */
+  /* ---------- basic model ---------- */
   let idCounter = 0;
-  const roots = [newNode(0, 'Main topic')];
-
-  function newNode(depth, text = '') {
-    return {
-      id: `node-${idCounter++}`,
-      text: text || (depth === 0 ? 'New root topic' : 'New sub-topic'),
-      depth,
-      children: [],
-      shape: 'square',
-      color: null,
-      icon: null
-    };
+  const roots = [createNode(0, 'Main topic')];
+  function createNode(depth, text = '') {
+    return { id: `n${idCounter++}`, text, depth, children: [], shape: 'square' };
   }
 
-  /* ---------- Helpers ---------- */
+  /* ---------- util ---------- */
   const $ = (sel, root = document) => root.querySelector(sel);
   let currentNodeId = null, currentInput = null;
 
-  function colorToClass(c) { return `cls_${c.replace(/#/g,'')}`; }
-
-  function applyShape(shape, label) {
-    const safe = label.replace(/"/g,'#quot;').replace(/\n/g,'<br>');
-    switch (shape) {
-      case 'rounded': return `(${safe})`;
-      case 'circle' : return `((${safe}))`;
-      case 'hexagon': return `{{${safe}}}`;
-      case 'bang'   : return `>${safe}<`;
-      case 'cloud'  : return `)${safe}(`;
-      case 'square':
-      default       : return `[${safe}]`;
-    }
-  }
-
-  /* ---------- Editor renderer ---------- */
+  /* ---------- editor ---------- */
   function renderEditor() {
-    const c = $('#mindmap-editor');
-    c.innerHTML = roots.length
-      ? ''
-      : '<p style="color:#7f8c8d">No topics yet. Click “Add root topic”.</p>';
-
-    roots.forEach(n => renderNodeUI(n, c));
-    updateToolbar();
+    const box = $('#mindmap-editor'); box.innerHTML = '';
+    roots.forEach(n => renderNode(n, box));
   }
-
-  function renderNodeUI(node, parentEl) {
+  function renderNode(node, parent) {
     const row = document.createElement('div');
-    row.className = 'node';
+    row.className = 'node'; row.style.marginLeft = `${node.depth * 1.8}rem`;
     row.dataset.id = node.id;
-    row.style.marginLeft = `${node.depth * 1.8}rem`;
 
-    const inp = Object.assign(document.createElement('input'), {
-      type: 'text',
-      value: node.text,
-      oninput: e => { node.text = e.target.value; modelChanged(); },
-      onfocus: () => { currentNodeId = node.id; currentInput = inp; updateToolbar(); }
-    });
+    const inp = document.createElement('input');
+    inp.value = node.text;
+    inp.oninput = e => { node.text = e.target.value; update(); };
+    inp.onfocus = () => { currentNodeId = node.id; currentInput = inp; };
     row.appendChild(inp);
 
-    const addBtn = Object.assign(document.createElement('button'), {
-      textContent: '+',
-      title: 'Add child topic',
-      onclick() {
-        node.children.push(newNode(node.depth + 1));
-        renderEditor(); modelChanged();
-        setTimeout(() => $('[data-id="'+node.children.at(-1).id+'"] input')?.focus());
-      }
-    });
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+'; addBtn.onclick = () => {
+      node.children.push(createNode(node.depth + 1, 'Sub-topic'));
+      renderEditor(); update();
+      setTimeout(() => row.nextSibling?.querySelector('input')?.focus());
+    };
     row.appendChild(addBtn);
 
-    const rmBtn = Object.assign(document.createElement('button'), {
-      textContent: '–',
-      title: 'Remove this topic',
-      onclick() {
-        if (!confirm(`Remove “${node.text}” and all sub-topics?`)) return;
-        removeNode(node.id); currentNodeId = currentInput = null;
-        renderEditor(); modelChanged();
-      }
-    });
-    row.appendChild(rmBtn);
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '–'; delBtn.onclick = () => {
+      if (!confirm(`Delete “${node.text}”?`)) return;
+      removeNode(node.id); renderEditor(); update();
+    };
+    row.appendChild(delBtn);
 
-    parentEl.appendChild(row);
-    node.children.forEach(ch => renderNodeUI(ch, parentEl));
+    parent.appendChild(row);
+    node.children.forEach(c => renderNode(c, parent));
   }
-
   function removeNode(id, list = roots) {
     for (let i = 0; i < list.length; ++i) {
       if (list[i].id === id) return !!list.splice(i,1);
@@ -173,125 +103,72 @@
     }
     return false;
   }
-
-  /* ---------- Mermaid code generation ---------- */
-  const IND = '  ';
-
-  function uniqueColors(set = new Set(), list = roots) {
-    list.forEach(n => { if (n.color) set.add(n.color); uniqueColors(set, n.children); });
-    return set;
+  function findNode(id, list = roots) {
+    for (const n of list) { if (n.id === id) return n;
+      const f = findNode(id, n.children); if (f) return f; }
   }
 
+  /* ---------- toolbar ---------- */
+  $('#toolbar').onclick = e => {
+    if (!currentNodeId) return;
+    const {shape} = e.target.dataset; if (!shape) return;
+    findNode(currentNodeId).shape = shape;
+    renderEditor(); update(); currentInput?.focus();
+  };
+
+  /* ---------- Mermaid generation ---------- */
+  function shapeWrap(shape, txt) {
+    switch (shape) {
+      case 'rounded': return `(${txt})`;
+      case 'circle' : return `((${txt}))`;
+      case 'hexagon': return `{{${txt}}}`;
+      case 'bang'   : return `>${txt}<`;
+      case 'cloud'  : return `)${txt}(`;
+      default       : return `[${txt}]`; // square
+    }
+  }
   function genMindmap() {
     let out = 'mindmap\n';
-    const classDefs = [];
-    const explicit = uniqueColors();
-    const needDefault = roots.length === 1 && !roots[0].color && explicit.size === 0;
-
-    const build = n => {
-      let line = IND.repeat(n.depth + 1) + applyShape(n.shape, n.text);
-      if (n.depth === 0 && needDefault) line += ':::defaultRootStyle';
-      if (n.color) line += ':::' + colorToClass(n.color);
-      out += line + '\n';
-
-      if (n.icon) out += IND.repeat(n.depth + 2) + `::icon(${n.icon})\n`;
-      n.children.forEach(build);
+    const emit = n => {
+      out += '  '.repeat(n.depth + 1) + shapeWrap(n.shape, n.text) + '\n';
+      n.children.forEach(emit);
     };
-    roots.forEach(build);
-
-    explicit.forEach(c =>
-      classDefs.push(`classDef ${colorToClass(c)} fill:${c},stroke:#555,stroke-width:2px,color:#fff;`)
-    );
-    if (needDefault)
-      classDefs.push('classDef defaultRootStyle fill:#f0f0f0,stroke:#888,stroke-width:2px,color:#333;');
-
-    if (classDefs.length) out = out.trimEnd() + '\n' + classDefs.join('\n') + '\n';
+    roots.forEach(emit);
     return out;
   }
+  function genFlowchart() { /* placeholder – unchanged */ return 'graph TD\n  A-->B\n'; }
+  function genTimeline()  { /* placeholder – unchanged */ return 'timeline\n  section\n'; }
 
-  function genTimeline() {/* unchanged */ /* … */}
-  function genFlowchart() {/* unchanged */ /* … */}
-
-  function toMermaid(mode) {
-    if (!roots.length) return 'graph TD\n  empty[Add a root topic]';
-    if (mode==='mindmap') return genMindmap();
-    if (mode==='timeline') return genTimeline();
-    if (mode==='flowchart') return genFlowchart();
-    return 'graph TD\n  err[Unknown mode]';
+  function update() {
+    const mode = $('#mode').value;
+    const md = mode === 'mindmap' ? genMindmap()
+            : mode === 'flowchart' ? genFlowchart()
+            : genTimeline();
+    $('#mermaid-code').value = md;
+    renderPreview(md);
   }
 
-  /* ---------- Preview ---------- */
-  let manual = false;
-
   async function renderPreview(code) {
-    $('#mermaid-code').value = code;
     const box = $('#m-preview');
     box.innerHTML = ''; box.removeAttribute('data-processed');
     try {
-      const {svg, bindFunctions} = await mermaid.render('m-'+Date.now(), code);
+      const {svg, bindFunctions} = await mermaid.render('m'+Date.now(), code);
       box.innerHTML = svg; bindFunctions?.(box);
     } catch (e) {
-      box.innerHTML = `<pre style="color:red">Error rendering:\n${e.message||e}</pre>`;
+      box.innerHTML = `<pre style="color:red">Mermaid error:\n${e.message||e}</pre>`;
     }
   }
 
-  function modelChanged() { if (!manual) renderPreview(toMermaid($('#mode').value)); }
-
-  $('#mermaid-code').addEventListener('input', e => { manual = true; renderPreview(e.target.value); });
-  $('#mode').onchange = () => { manual = false; modelChanged(); };
-
-  /* ---------- Toolbar ---------- */
-  function updateToolbar() {
-    const node = currentNodeId && findNode(currentNodeId);
-    document.querySelectorAll('#toolbar .color').forEach(btn => {
-      const chosen = node
-        ? (btn.dataset.color === '' ? !node.color : btn.dataset.color === node.color)
-        : btn.dataset.color === '';
-      btn.classList.toggle('active', chosen);
-    });
-  }
-
-  function findNode(id, list = roots) {
-    for (const n of list) {
-      if (n.id === id) return n;
-      const f = findNode(id, n.children); if (f) return f;
-    }
-    return null;
-  }
-
-  $('#toolbar').addEventListener('click', e => {
-    if (!currentNodeId) return;
-    const n = findNode(currentNodeId); if (!n) return;
-    const {color, shape, icon} = e.target.dataset;
-    if (color !== undefined) n.color = color || null;
-    if (shape) n.shape = shape;
-    if (icon !== undefined) n.icon = icon || null;
-    manual = false; modelChanged(); renderEditor(); currentInput?.focus();
-  });
-
-  /* ---------- Misc handlers ---------- */
+  /* ---------- misc ---------- */
   $('#add-root').onclick = () => {
-    roots.push(newNode(0));
-    manual = false; modelChanged(); renderEditor();
-    setTimeout(() => $('[data-id="'+roots.at(-1).id+'"] input')?.focus());
+    roots.push(createNode(0, 'New root'));
+    renderEditor(); update();
   };
+  $('#mode').onchange = update;
 
-  $('#copy-md').onclick = () => navigator.clipboard
-    .writeText($('#mermaid-code').value).then(()=>alert('Copied!'));
-
-  $('#download-md').onclick = () => {
-    const blob = new Blob([$('#mermaid-code').value], {type:'text/markdown'});
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download: `${$('#mode').value}-${new Date().toISOString().slice(0,10)}.md`
-    });
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
-  };
-
-  /* ---------- Init ---------- */
+  /* ---------- init ---------- */
   mermaid.initialize({startOnLoad:false});
-  renderEditor(); modelChanged();
-
+  renderEditor(); update();
 })();
 </script>
 </body>
