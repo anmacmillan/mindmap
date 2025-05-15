@@ -1,126 +1,249 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Mermaid Mind-Map Builder – live preview</title>
+<meta charset="utf-8">
+<title>Mermaid Builder – live + modes</title>
 
-  <!-- Bundled Mermaid 10.9.1 (so the file works over file:// ) -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<!-- Mermaid 10.9.1 – works over file:// and GitHub Pages -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 
-  <style>
-    body{font-family:system-ui,sans-serif;margin:1.2rem}
-    #mindmap-editor{margin-bottom:1rem}
-    .node{margin-left:1rem;display:flex;align-items:center;gap:.4rem}
-    .node input{width:16rem}
-    textarea{width:100%;resize:vertical}
-    #preview-box{border:1px solid #ddd;padding:.8rem;border-radius:6px}
-  </style>
+<style>
+body{font-family:system-ui,sans-serif;margin:1.2rem}
+h1{margin-bottom:.8rem}
+section{margin-bottom:1rem}
+#mindmap-editor .node{margin-left:1rem;display:flex;align-items:center;gap:.4rem;margin-top:.3rem}
+#mindmap-editor input{width:16rem}
+#preview-box{border:1px solid #ddd;padding:.8rem;border-radius:6px}
+#toolbar button{margin:0 .2rem .2rem 0;padding:.1rem .3rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:.9rem}
+#toolbar button.color{width:1.2rem;height:1.2rem;border:none}
+</style>
 </head>
 <body>
-<h1>Mermaid Mind-Map Builder</h1>
+<h1>Mermaid Builder</h1>
 
-<div id="mindmap-editor"></div>
-<button id="add-root">Add root</button>
-<hr>
+<!-- Controls ---------------------------------------------------->
+<section id="controls">
+  <label for="mode">Diagram mode:</label>
+  <select id="mode">
+    <option value="mindmap">Mind-map</option>
+    <option value="flowchart">Flowchart</option>
+    <option value="timeline">Timeline</option>
+  </select>
+  <button id="add-root">Add root</button>
+</section>
 
-<h2>Mermaid Markdown</h2>
-<textarea id="mermaid-code" rows="8" spellcheck="false"></textarea><br>
-<button id="copy-md">Copy to clipboard</button>
-<button id="download-md">Download .md</button>
+<!-- Quick-entry toolbar ---------------------------------------->
+<section id="toolbar">
+  <strong>Colors:</strong>
+  <button class="color" data-color="red"    style="background:#ef9a9a"></button>
+  <button class="color" data-color="green"  style="background:#a5d6a7"></button>
+  <button class="color" data-color="blue"   style="background:#90caf9"></button>
+  <button class="color" data-color="yellow" style="background:#fff59d"></button>
+  <strong>Shapes:</strong>
+  <button data-shape="rounded">( )</button>
+  <button data-shape="stadium">([ ])</button>
+  <button data-shape="diamond">{ }</button>
+  <button data-shape="circle">(( ))</button>
+  <strong>Icons:</strong>
+  <button data-icon="⚖️">⚖️</button>
+  <button data-icon="📚">📚</button>
+  <button data-icon="🏛️">🏛️</button>
+  <button data-icon="💡">💡</button>
+  <button data-icon="📄">📄</button>
+</section>
 
-<h2>Preview</h2>
-<div id="preview-box">
-  <div id="m-preview" class="mermaid"></div>
-</div>
+<!-- Outline editor --------------------------------------------->
+<section>
+  <div id="mindmap-editor"></div>
+</section>
+
+<!-- Mermaid code ------------------------------------------------>
+<section>
+  <h3>Mermaid Markdown</h3>
+  <textarea id="mermaid-code" rows="8" spellcheck="false" style="width:100%;resize:vertical"></textarea><br>
+  <button id="copy-md">Copy</button>
+  <button id="download-md">Download .md</button>
+</section>
+
+<!-- Live preview ----------------------------------------------->
+<section>
+  <h3>Preview</h3>
+  <div id="preview-box"><div id="m-preview" class="mermaid"></div></div>
+</section>
 
 <script>
-/* ------------------------------------------------ data model --- */
+/* ---------- data model --------------------------------------- */
 let idCounter = 0;
-const roots = [];         // array of root nodes
-const newNode = (depth)=>({id:`n${idCounter++}`,text:depth? 'Sub-topic':'New Topic',depth,children:[]});
+const roots = [];
+const newNode = depth => ({
+  id: `n${idCounter++}`,
+  text: depth ? 'Sub-topic' : 'New Topic',
+  depth,
+  children: [],
+  shape: 'rect',
+  color: null
+});
 roots.push(newNode(0));
 
-/* ------------------------------------------------ dom helpers --- */
-const $ = (sel,root=document)=>root.querySelector(sel);
+/* ---------- helpers ------------------------------------------ */
+const $ = (sel, root = document) => root.querySelector(sel);
+let currentNodeId = null;
+let currentInput   = null;
 
-/* ------------------------------------------- editor rendering --- */
-function renderEditor(){
-  const wrap=$("#mindmap-editor");
-  wrap.innerHTML='';
-  roots.forEach(n=>renderNode(n,wrap));
+/* ---------- editor rendering --------------------------------- */
+function renderEditor() {
+  const wrap = $('#mindmap-editor');
+  wrap.innerHTML = '';
+  roots.forEach(n => renderNode(n, wrap));
 }
-function renderNode(node,container){
-  const d=document.createElement('div');
-  d.className='node';
-  d.style.marginLeft=`${node.depth}rem`;
-  d.dataset.id=node.id;                      // for event delegation
-  d.innerHTML=`<input value="${node.text}"><button>+</button>`;
+
+function renderNode(node, container) {
+  const d = document.createElement('div');
+  d.className   = 'node';
+  d.dataset.id  = node.id;
+  d.style.marginLeft = `${node.depth}rem`;
+
+  const inp = document.createElement('input');
+  inp.value      = node.text;
+  inp.oninput    = () => { node.text = inp.value; modelChanged(); };
+  inp.onfocus    = () => { currentNodeId = node.id; currentInput = inp; };
+  d.append(inp);
+
+  const btn = document.createElement('button');
+  btn.textContent = '+';
+  btn.onclick     = () => {
+    node.children.push(newNode(node.depth + 1));
+    renderEditor();
+    modelChanged();
+  };
+  d.append(btn);
+
   container.append(d);
-  node.children.forEach(c=>renderNode(c,container));
+  node.children.forEach(c => renderNode(c, container));
 }
 
-/* --------------------------------------- update from the editor --*/
-$("#mindmap-editor").addEventListener('input',e=>{
-  if(e.target.tagName!=='INPUT')return;
-  const id=e.target.parentElement.dataset.id;
-  findNode(id).text=e.target.value;
-  liveRender();                 // no debounce ⇒ immediate
-});
-$("#mindmap-editor").addEventListener('click',e=>{
-  if(e.target.tagName!=='BUTTON')return;
-  const pId=e.target.parentElement.dataset.id;
-  const parent=findNode(pId);
-  const child=newNode(parent.depth+1);
-  parent.children.push(child);
-  renderEditor();
-  liveRender();
-});
-$("#add-root").onclick=()=>{roots.push(newNode(0));renderEditor();liveRender();};
+/* ---------- serialization ------------------------------------ */
+function className(c) { return `cls_${c}`; }
 
-/* ------------------------------------------- serialization -------*/
-function findNode(id,list=roots){
-  for(const n of list){
-    if(n.id===id) return n;
-    const f=findNode(id,n.children);
-    if(f) return f;
+function collectColors(set = new Set(), list = roots) {
+  list.forEach(n => {
+    if (n.color) set.add(n.color);
+    collectColors(set, n.children);
+  });
+  return set;
+}
+
+function asMermaid(mode) {
+  if (mode === 'timeline') {
+    let out = 'timeline\\n';
+    roots.forEach(r => { out += `    ${r.text}\\n`; });
+    return out;
+  }
+
+  /* Mind-map --------------------------------------------------- */
+  if (mode === 'mindmap') {
+    let out = 'mindmap\\n';
+    const walk = n => {
+      let label = n.text;
+      if (n.color) label += ':::' + className(n.color);
+      out += '  '.repeat(n.depth) + label + '\\n';
+      n.children.forEach(walk);
+    };
+    roots.forEach(walk);
+    collectColors().forEach(c => { out += `classDef ${className(c)} fill:${c};\\n`; });
+    return out;
+  }
+
+  /* Flowchart -------------------------------------------------- */
+  const wrap = (shape, lbl) => {
+    switch (shape) {
+      case 'rounded': return `("${lbl}")`;
+      case 'stadium': return `([${lbl}])`;
+      case 'diamond': return `{${lbl}}`;
+      case 'circle' : return `((${lbl}))`;
+      default       : return `[${lbl}]`;
+    }
+  };
+  let out = 'graph TD\\n';
+  const styles = [];
+  const walk = (n, parent) => {
+    out += `  ${n.id}${wrap(n.shape, n.text)}\\n`;
+    if (n.color) styles.push(`style ${n.id} fill:${n.color}`);
+    if (parent) out += `  ${parent.id} --> ${n.id}\\n`;
+    n.children.forEach(c => walk(c, n));
+  };
+  roots.forEach(r => walk(r, null));
+  return out + styles.map(s => '  ' + s + ';').join('\\n');
+}
+
+/* ---------- preview rendering -------------------------------- */
+function renderMermaid(md) {
+  const tgt = $('#m-preview');
+  tgt.textContent = md;
+  mermaid.render('gen', md)
+    .then(({ svg }) => { tgt.innerHTML = svg; })
+    .catch(err => { tgt.innerHTML = '<pre style="color:red">' + err.message + '</pre>'; });
+}
+
+/* ---------- model / textarea sync ---------------------------- */
+let manualOverride = false;  // true when user is editing textarea directly
+function modelChanged() {
+  if (manualOverride) return;
+  const md = asMermaid($('#mode').value);
+  $('#mermaid-code').value = md;
+  renderMermaid(md);
+}
+$('#mermaid-code').addEventListener('input', e => {
+  manualOverride = true;
+  renderMermaid(e.target.value);
+});
+function resetOverride() { manualOverride = false; }
+
+/* ---------- toolbar events ----------------------------------- */
+$('#toolbar').addEventListener('click', e => {
+  if (!currentNodeId) return;
+  const node = findNode(currentNodeId);
+
+  if (e.target.dataset.color) {         // set colour
+    node.color = e.target.dataset.color;
+    resetOverride(); modelChanged();
+  } else if (e.target.dataset.shape) {  // set shape
+    node.shape = e.target.dataset.shape;
+    resetOverride(); modelChanged();
+  } else if (e.target.dataset.icon && currentInput) { // insert icon
+    const icon = e.target.dataset.icon + ' ';
+    const pos  = currentInput.selectionStart;
+    currentInput.setRangeText(icon, pos, pos, 'end');
+    currentInput.dispatchEvent(new Event('input'));
+  }
+});
+function findNode(id, list = roots) {
+  for (const n of list) {
+    if (n.id === id) return n;
+    const f = findNode(id, n.children);
+    if (f) return f;
   }
 }
-function asMermaid(mindmap=true){
-  let out=mindmap?'mindmap\n':'graph TD\n';
-  const walk=(node,prefix)=>{
-    const label=node.text.replace(/"/g,'\\"');
-    if(mindmap){
-      out+='  '.repeat(node.depth)+label+'\n';
-    }else if(prefix){
-      out+=`  ${prefix} --> ${node.id}("${label}")\n`;
-    }
-    node.children.forEach(c=>walk(c,mindmap?undefined:node.id));
-  };
-  roots.forEach(r=>walk(r));
-  return out;
-}
 
-/* ------------------------------------------ live preview ---------*/
-function liveRender(){
-  const md=asMermaid(true);
-  $("#mermaid-code").value=md;
-  const tgt=$("#m-preview");
-  tgt.textContent=md;
-  mermaid.render('generated',md).then(({svg})=>tgt.innerHTML=svg);
-}
-
-/* ------------------------------------------------ export UI ------*/
-$("#copy-md").onclick=()=>navigator.clipboard.writeText($("#mermaid-code").value);
-$("#download-md").onclick=()=>{
-  const blob=new Blob([$("#mermaid-code").value],{type:'text/markdown'});
-  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:'mindmap.md'});
-  a.click();URL.revokeObjectURL(a.href);
+/* ---------- export buttons ------------------------------------ */
+$('#copy-md').onclick = () => navigator.clipboard.writeText($('#mermaid-code').value);
+$('#download-md').onclick = () => {
+  const blob = new Blob([$('#mermaid-code').value], { type: 'text/markdown' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'mindmap.md'
+  });
+  a.click(); URL.revokeObjectURL(a.href);
 };
 
-/* ------------------------------------------------ startup --------*/
-mermaid.initialize({startOnLoad:false});
+/* ---------- root button & mode selector ----------------------- */
+$('#add-root').onclick = () => { roots.push(newNode(0)); renderEditor(); resetOverride(); modelChanged(); };
+$('#mode').addEventListener('change', () => { resetOverride(); modelChanged(); });
+
+/* ---------- initial render ------------------------------------ */
+mermaid.initialize({ startOnLoad: false });
 renderEditor();
-liveRender();
+modelChanged();
 </script>
 </body>
 </html>
