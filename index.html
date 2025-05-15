@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Mermaid Builder – live + modes</title>
+<title>Mermaid Builder – live, shapes, colours, icons</title>
 
-<!-- Mermaid 10.9.1 – works over file:// and GitHub Pages -->
+<!-- Mermaid 10.9.1 – safe for file:// and GitHub Pages -->
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 
 <style>
@@ -12,16 +12,16 @@ body{font-family:system-ui,sans-serif;margin:1.2rem}
 h1{margin-bottom:.8rem}
 section{margin-bottom:1rem}
 #mindmap-editor .node{margin-left:1rem;display:flex;align-items:center;gap:.4rem;margin-top:.3rem}
-#mindmap-editor input{width:16rem}
+#mindmap-editor input{width:18rem}
 #preview-box{border:1px solid #ddd;padding:.8rem;border-radius:6px}
-#toolbar button{margin:0 .2rem .2rem 0;padding:.1rem .3rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:.9rem}
-#toolbar button.color{width:1.2rem;height:1.2rem;border:none}
+#toolbar button{margin:0 .25rem .25rem 0;padding:.1rem .35rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:.9rem}
+#toolbar button.color{width:1.25rem;height:1.25rem;border:none}
 </style>
 </head>
 <body>
 <h1>Mermaid Builder</h1>
 
-<!-- Controls ---------------------------------------------------->
+<!-- Mode & root ------------------------------------------------->
 <section id="controls">
   <label for="mode">Diagram mode:</label>
   <select id="mode">
@@ -32,24 +32,30 @@ section{margin-bottom:1rem}
   <button id="add-root">Add root</button>
 </section>
 
-<!-- Quick-entry toolbar ---------------------------------------->
+<!-- Toolbar ----------------------------------------------------->
 <section id="toolbar">
-  <strong>Colors:</strong>
+  <strong>Colours:</strong>
   <button class="color" data-color="red"    style="background:#ef9a9a"></button>
   <button class="color" data-color="green"  style="background:#a5d6a7"></button>
   <button class="color" data-color="blue"   style="background:#90caf9"></button>
   <button class="color" data-color="yellow" style="background:#fff59d"></button>
+
   <strong>Shapes:</strong>
+  <button data-shape="default">[ ]</button>
+  <button data-shape="square">[■]</button>
   <button data-shape="rounded">( )</button>
-  <button data-shape="stadium">([ ])</button>
-  <button data-shape="diamond">{ }</button>
   <button data-shape="circle">(( ))</button>
-  <strong>Icons:</strong>
-  <button data-icon="⚖️">⚖️</button>
-  <button data-icon="📚">📚</button>
-  <button data-icon="🏛️">🏛️</button>
-  <button data-icon="💡">💡</button>
-  <button data-icon="📄">📄</button>
+  <button data-shape="diamond">{ }</button>
+  <button data-shape="hexagon">{{ }}</button>
+  <button data-shape="bang">))!((</button>
+  <button data-shape="cloud">)☁️(</button>
+
+  <strong>Icons (Font Awesome):</strong>
+  <button data-icon="fa fa-balance-scale">⚖️</button>
+  <button data-icon="fa fa-book">📚</button>
+  <button data-icon="fa fa-university">🏛️</button>
+  <button data-icon="fa fa-lightbulb-o">💡</button>
+  <button data-icon="fa fa-file">📄</button>
 </section>
 
 <!-- Outline editor --------------------------------------------->
@@ -57,10 +63,11 @@ section{margin-bottom:1rem}
   <div id="mindmap-editor"></div>
 </section>
 
-<!-- Mermaid code ------------------------------------------------>
+<!-- Mermaid code box ------------------------------------------->
 <section>
   <h3>Mermaid Markdown</h3>
-  <textarea id="mermaid-code" rows="8" spellcheck="false" style="width:100%;resize:vertical"></textarea><br>
+  <textarea id="mermaid-code" rows="9" spellcheck="false"
+            style="width:100%;resize:vertical"></textarea><br>
   <button id="copy-md">Copy</button>
   <button id="download-md">Download .md</button>
 </section>
@@ -80,7 +87,7 @@ const newNode = depth => ({
   text: depth ? 'Sub-topic' : 'New Topic',
   depth,
   children: [],
-  shape: 'rect',
+  shape: 'default',   // default | square | rounded | circle | diamond | hexagon | bang | cloud
   color: null
 });
 roots.push(newNode(0));
@@ -88,86 +95,100 @@ roots.push(newNode(0));
 /* ---------- helpers ------------------------------------------ */
 const $ = (sel, root = document) => root.querySelector(sel);
 let currentNodeId = null;
-let currentInput   = null;
+let currentInput  = null;
 
-/* ---------- editor rendering --------------------------------- */
+/* ---------- render outline editor ---------------------------- */
 function renderEditor() {
   const wrap = $('#mindmap-editor');
   wrap.innerHTML = '';
   roots.forEach(n => renderNode(n, wrap));
 }
-
 function renderNode(node, container) {
   const d = document.createElement('div');
-  d.className   = 'node';
-  d.dataset.id  = node.id;
+  d.className = 'node';
   d.style.marginLeft = `${node.depth}rem`;
+  d.dataset.id = node.id;
 
   const inp = document.createElement('input');
-  inp.value      = node.text;
-  inp.oninput    = () => { node.text = inp.value; modelChanged(); };
-  inp.onfocus    = () => { currentNodeId = node.id; currentInput = inp; };
+  inp.value = node.text;
+  inp.oninput = () => { node.text = inp.value; modelChanged(); };
+  inp.onfocus = () => { currentNodeId = node.id; currentInput = inp; };
   d.append(inp);
 
-  const btn = document.createElement('button');
-  btn.textContent = '+';
-  btn.onclick     = () => {
+  const add = document.createElement('button');
+  add.textContent = '+';
+  add.onclick = () => {
     node.children.push(newNode(node.depth + 1));
     renderEditor();
     modelChanged();
   };
-  d.append(btn);
+  d.append(add);
 
   container.append(d);
   node.children.forEach(c => renderNode(c, container));
 }
 
-/* ---------- serialization ------------------------------------ */
-function className(c) { return `cls_${c}`; }
+/* ---------- serialisation helpers ---------------------------- */
+const cls = c => `cls_${c}`;
+const shapeWrapMind = (shape, lbl) => {
+  switch (shape) {
+    case 'square':  return `[${lbl}]`;
+    case 'rounded': return `(${lbl})`;
+    case 'circle':  return `((${lbl}))`;
+    case 'diamond': return `{${lbl}}`;
+    case 'hexagon': return `{{${lbl}}}`;
+    case 'bang':    return `))${lbl}((`;
+    case 'cloud':   return `)${lbl}(`;
+    default:        return lbl;
+  }
+};
+const shapeWrapFlow = (shape, lbl) => {
+  switch (shape) {
+    case 'rounded': return `("${lbl}")`;
+    case 'diamond': return `{${lbl}}`;
+    case 'circle':  return `((${lbl}))`;
+    case 'hexagon': return `{{${lbl}}}`;
+    case 'stadium': return `([${lbl}])`;
+    default:        return `[${lbl}]`;
+  }
+};
 
-function collectColors(set = new Set(), list = roots) {
+function collectColours(set = new Set(), list = roots) {
   list.forEach(n => {
     if (n.color) set.add(n.color);
-    collectColors(set, n.children);
+    collectColours(set, n.children);
   });
   return set;
 }
 
-function asMermaid(mode) {
+/* ---------- build Mermaid code ------------------------------- */
+function toMermaid(mode) {
   if (mode === 'timeline') {
     let out = 'timeline\\n';
     roots.forEach(r => { out += `    ${r.text}\\n`; });
     return out;
   }
 
-  /* Mind-map --------------------------------------------------- */
+  /* ---- mind-map ---- */
   if (mode === 'mindmap') {
     let out = 'mindmap\\n';
     const walk = n => {
-      let label = n.text;
-      if (n.color) label += ':::' + className(n.color);
+      let label = shapeWrapMind(n.shape, n.text);
+      if (n.color) label += ':::' + cls(n.color);
       out += '  '.repeat(n.depth) + label + '\\n';
+      // icons: look for pattern ::icon(... already in text)
       n.children.forEach(walk);
     };
     roots.forEach(walk);
-    collectColors().forEach(c => { out += `classDef ${className(c)} fill:${c};\\n`; });
+    collectColours().forEach(c => { out += `classDef ${cls(c)} fill:${c};\\n`; });
     return out;
   }
 
-  /* Flowchart -------------------------------------------------- */
-  const wrap = (shape, lbl) => {
-    switch (shape) {
-      case 'rounded': return `("${lbl}")`;
-      case 'stadium': return `([${lbl}])`;
-      case 'diamond': return `{${lbl}}`;
-      case 'circle' : return `((${lbl}))`;
-      default       : return `[${lbl}]`;
-    }
-  };
+  /* ---- flowchart ---- */
   let out = 'graph TD\\n';
   const styles = [];
   const walk = (n, parent) => {
-    out += `  ${n.id}${wrap(n.shape, n.text)}\\n`;
+    out += `  ${n.id}${shapeWrapFlow(n.shape, n.text)}\\n`;
     if (n.color) styles.push(`style ${n.id} fill:${n.color}`);
     if (parent) out += `  ${parent.id} --> ${n.id}\\n`;
     n.children.forEach(c => walk(c, n));
@@ -176,47 +197,57 @@ function asMermaid(mode) {
   return out + styles.map(s => '  ' + s + ';').join('\\n');
 }
 
-/* ---------- preview rendering -------------------------------- */
+/* ---------- render preview ----------------------------------- */
 function renderMermaid(md) {
   const tgt = $('#m-preview');
   tgt.textContent = md;
-  mermaid.render('gen', md)
+  mermaid.render('generated', md)
     .then(({ svg }) => { tgt.innerHTML = svg; })
-    .catch(err => { tgt.innerHTML = '<pre style="color:red">' + err.message + '</pre>'; });
+    .catch(err => { tgt.innerHTML =
+      '<pre style="color:red">' + err.message + '</pre>'; });
 }
 
-/* ---------- model / textarea sync ---------------------------- */
-let manualOverride = false;  // true when user is editing textarea directly
+/* ---------- model ↔ code sync -------------------------------- */
+let manualEdit = false;         // true while user typing in textarea
 function modelChanged() {
-  if (manualOverride) return;
-  const md = asMermaid($('#mode').value);
+  if (manualEdit) return;
+  const md = toMermaid($('#mode').value);
   $('#mermaid-code').value = md;
   renderMermaid(md);
 }
 $('#mermaid-code').addEventListener('input', e => {
-  manualOverride = true;
+  manualEdit = true;
   renderMermaid(e.target.value);
 });
-function resetOverride() { manualOverride = false; }
+function resetManual() { manualEdit = false; }
 
-/* ---------- toolbar events ----------------------------------- */
+/* ---------- toolbar interaction ------------------------------ */
 $('#toolbar').addEventListener('click', e => {
   if (!currentNodeId) return;
   const node = findNode(currentNodeId);
 
-  if (e.target.dataset.color) {         // set colour
+  /* colour */
+  if (e.target.dataset.color) {
     node.color = e.target.dataset.color;
-    resetOverride(); modelChanged();
-  } else if (e.target.dataset.shape) {  // set shape
+    resetManual(); modelChanged(); return;
+  }
+
+  /* shape */
+  if (e.target.dataset.shape) {
     node.shape = e.target.dataset.shape;
-    resetOverride(); modelChanged();
-  } else if (e.target.dataset.icon && currentInput) { // insert icon
-    const icon = e.target.dataset.icon + ' ';
-    const pos  = currentInput.selectionStart;
-    currentInput.setRangeText(icon, pos, pos, 'end');
+    resetManual(); modelChanged(); return;
+  }
+
+  /* icon */
+  if (e.target.dataset.icon && currentInput) {
+    const ic = e.target.dataset.icon;
+    const insert = ' ::icon(' + ic + ')';
+    const pos = currentInput.selectionStart;
+    currentInput.setRangeText(insert, pos, pos, 'end');
     currentInput.dispatchEvent(new Event('input'));
   }
 });
+
 function findNode(id, list = roots) {
   for (const n of list) {
     if (n.id === id) return n;
@@ -225,22 +256,28 @@ function findNode(id, list = roots) {
   }
 }
 
-/* ---------- export buttons ------------------------------------ */
-$('#copy-md').onclick = () => navigator.clipboard.writeText($('#mermaid-code').value);
+/* ---------- export buttons ----------------------------------- */
+$('#copy-md').onclick = () =>
+  navigator.clipboard.writeText($('#mermaid-code').value);
 $('#download-md').onclick = () => {
-  const blob = new Blob([$('#mermaid-code').value], { type: 'text/markdown' });
+  const blob = new Blob([$('#mermaid-code').value],
+                        { type: 'text/markdown' });
   const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(blob),
-    download: 'mindmap.md'
+    href: URL.createObjectURL(blob), download: 'mindmap.md'
   });
   a.click(); URL.revokeObjectURL(a.href);
 };
 
-/* ---------- root button & mode selector ----------------------- */
-$('#add-root').onclick = () => { roots.push(newNode(0)); renderEditor(); resetOverride(); modelChanged(); };
-$('#mode').addEventListener('change', () => { resetOverride(); modelChanged(); });
+/* ---------- add root & mode change --------------------------- */
+$('#add-root').onclick = () => {
+  roots.push(newNode(0));
+  renderEditor(); resetManual(); modelChanged();
+};
+$('#mode').addEventListener('change', () => {
+  resetManual(); modelChanged();
+});
 
-/* ---------- initial render ------------------------------------ */
+/* ---------- start -------------------------------------------- */
 mermaid.initialize({ startOnLoad: false });
 renderEditor();
 modelChanged();
