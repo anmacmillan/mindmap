@@ -4,18 +4,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mermaid Diagram Builder</title>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
-<!--  CSS unchanged from previous version – cut for brevity  -->
+<!-- Mermaid -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<!-- canvg for SVG → PNG (loaded lazily only when needed) -->
+<!-- <script src="https://cdn.jsdelivr.net/npm/canvg@3.0.10/lib/umd.min.js"></script> -->
+
 <style>
-/* … same CSS as before … */
+/* == Layout & typography ================================================== */
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8f9fa;color:#222}
+.container{max-width:1200px;margin:0 auto;padding:1rem}
+/* == Headings & sections =================================================== */
+h1{margin:0 0 1rem;font-size:1.75rem;text-align:center}
+section{margin-top:1.25rem}
+#controls,#toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+#controls select,#controls button,#toolbar button{padding:.35rem .7rem;font-size:.9rem;cursor:pointer}
+/* == Editor list =========================================================== */
+#mindmap-editor .node{display:flex;align-items:center;gap:.4rem;margin:.15rem 0}
+#mindmap-editor input{flex:1 1 auto;font:inherit;padding:.2rem .3rem}
+/* == Markdown / preview panes ============================================= */
+textarea{width:100%;min-height:320px;font:14px/1.4 "Fira Code",monospace;padding:.6rem;border:1px solid #ccc;border-radius:4px;background:#fff}
+#preview-box{min-height:320px;border:1px solid #ccc;border-radius:4px;background:#fff;padding:1rem;overflow:auto}
+#preview-box svg{max-width:100%}
+/* == Utility =============================================================== */
+button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:600px){
+  #markdown-section, #preview-section, #editor-section{margin-top:.75rem}
+}
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Mermaid Diagram Builder</h1>
 
-  <!---- Controls -->
+  <!-- Controls -->
   <section id="controls">
     <label for="mode">Diagram mode:</label>
     <select id="mode">
@@ -23,26 +46,40 @@
       <option value="flowchart">Flow-chart</option>
       <option value="timeline">Timeline</option>
     </select>
+
     <button id="add-root">Add root topic</button>
+
+    <!-- Markdown utilities -->
+    <button id="copy-md">Copy MD</button>
+    <button id="dl-md">Download MD</button>
+
+    <!-- Preview utilities -->
+    <button id="copy-svg">Copy SVG</button>
+    <button id="dl-png">Download PNG</button>
+
+    <!-- Autosave restore -->
+    <button id="restore">Restore autosave</button>
   </section>
 
-  <!---- Toolbar -->
+  <!-- Shape toolbar -->
   <section id="toolbar">
     <strong>Shapes:</strong>
-    <button data-shape="square">[ Square ]</button>
-    <button data-shape="rounded">( Rounded )</button>
-    <button data-shape="circle">(( Circle ))</button>
-    <button data-shape="bang">&gt; Bang &lt;</button>
-    <button data-shape="cloud">) Cloud (</button>
-    <button data-shape="hexagon">{{ Hexagon }}</button>
+    <button data-shape="square">[ Square ]</button>
+    <button data-shape="rounded">( Rounded )</button>
+    <button data-shape="circle">(( Circle ))</button>
+    <button data-shape="bang">)) Bang ((</button>
+    <button data-shape="cloud">) Cloud (</button>
+    <button data-shape="hexagon">{{ Hexagon }}</button>
   </section>
 
-  <!---- Editor / Markdown / Preview -->
+  <!-- Panes -->
   <section id="editor-section"><h3>Editor</h3><div id="mindmap-editor"></div></section>
+
   <section id="markdown-section">
     <h3>Mermaid Markdown</h3>
-    <textarea id="mermaid-code" rows="12" spellcheck="false"></textarea>
+    <textarea id="mermaid-code" spellcheck="false"></textarea>
   </section>
+
   <section id="preview-section">
     <h3>Preview</h3>
     <div id="preview-box"><div id="m-preview" class="mermaid" aria-live="polite"></div></div>
@@ -51,25 +88,30 @@
 
 <script>
 (() => {
-  /* ---------- basic model ---------- */
+  /* ========== model ===================================================== */
   let idCounter = 0;
-  const roots = [createNode(0, 'Main topic')];
+  const roots = [];
+
+  const LS_KEY = 'mindmapData';
+
   function createNode(depth, text = '') {
     return { id: `n${idCounter++}`, text, depth, children: [], shape: 'square' };
   }
 
-  /* ---------- util ---------- */
+  /* ========== helpers ==================================================== */
   const $ = (sel, root = document) => root.querySelector(sel);
   let currentNodeId = null, currentInput = null;
 
-  /* ---------- editor ---------- */
+  function traverse(node, fn) { fn(node); node.children.forEach(c => traverse(c, fn)); }
+
+  /* ========== editor rendering ========================================== */
   function renderEditor() {
     const box = $('#mindmap-editor'); box.innerHTML = '';
     roots.forEach(n => renderNode(n, box));
   }
   function renderNode(node, parent) {
     const row = document.createElement('div');
-    row.className = 'node'; row.style.marginLeft = `${node.depth * 1.8}rem`;
+    row.className = 'node'; row.style.marginLeft = `${node.depth * 1.6}rem`;
     row.dataset.id = node.id;
 
     const inp = document.createElement('input');
@@ -79,7 +121,8 @@
     row.appendChild(inp);
 
     const addBtn = document.createElement('button');
-    addBtn.textContent = '+'; addBtn.onclick = () => {
+    addBtn.textContent = '+'; addBtn.title = 'Add child';
+    addBtn.onclick = () => {
       node.children.push(createNode(node.depth + 1, 'Sub-topic'));
       renderEditor(); update();
       setTimeout(() => row.nextSibling?.querySelector('input')?.focus());
@@ -87,7 +130,8 @@
     row.appendChild(addBtn);
 
     const delBtn = document.createElement('button');
-    delBtn.textContent = '–'; delBtn.onclick = () => {
+    delBtn.textContent = '–'; delBtn.title = 'Delete';
+    delBtn.onclick = () => {
       if (!confirm(`Delete “${node.text}”?`)) return;
       removeNode(node.id); renderEditor(); update();
     };
@@ -98,31 +142,33 @@
   }
   function removeNode(id, list = roots) {
     for (let i = 0; i < list.length; ++i) {
-      if (list[i].id === id) return !!list.splice(i,1);
+      if (list[i].id === id) return !!list.splice(i, 1);
       if (removeNode(id, list[i].children)) return true;
     }
     return false;
   }
   function findNode(id, list = roots) {
-    for (const n of list) { if (n.id === id) return n;
-      const f = findNode(id, n.children); if (f) return f; }
+    for (const n of list) {
+      if (n.id === id) return n;
+      const f = findNode(id, n.children); if (f) return f;
+    }
   }
 
-  /* ---------- toolbar ---------- */
+  /* ========== toolbar ==================================================== */
   $('#toolbar').onclick = e => {
     if (!currentNodeId) return;
-    const {shape} = e.target.dataset; if (!shape) return;
+    const { shape } = e.target.dataset; if (!shape) return;
     findNode(currentNodeId).shape = shape;
     renderEditor(); update(); currentInput?.focus();
   };
 
-  /* ---------- Mermaid generation ---------- */
+  /* ========== markdown generation ======================================= */
   function shapeWrap(shape, txt) {
     switch (shape) {
       case 'rounded': return `(${txt})`;
       case 'circle' : return `((${txt}))`;
       case 'hexagon': return `{{${txt}}}`;
-      case 'bang'   : return `>${txt}<`;
+      case 'bang'   : return `))${txt}((`;          // correct Bang syntax
       case 'cloud'  : return `)${txt}(`;
       default       : return `[${txt}]`; // square
     }
@@ -136,38 +182,108 @@
     roots.forEach(emit);
     return out;
   }
-  function genFlowchart() { /* placeholder – unchanged */ return 'graph TD\n  A-->B\n'; }
-  function genTimeline()  { /* placeholder – unchanged */ return 'timeline\n  section\n'; }
+  function genFlowchart() { return 'graph TD\n  A-->B\n'; } // placeholder
+  function genTimeline()  { return 'timeline\n  section\n'; } // placeholder
 
+  /* ========== UI update ================================================== */
   function update() {
     const mode = $('#mode').value;
     const md = mode === 'mindmap' ? genMindmap()
-            : mode === 'flowchart' ? genFlowchart()
-            : genTimeline();
+              : mode === 'flowchart' ? genFlowchart()
+              : genTimeline();
     $('#mermaid-code').value = md;
     renderPreview(md);
+    localStorage.setItem(LS_KEY, JSON.stringify(roots)); // autosave
   }
 
   async function renderPreview(code) {
     const box = $('#m-preview');
     box.innerHTML = ''; box.removeAttribute('data-processed');
     try {
-      const {svg, bindFunctions} = await mermaid.render('m'+Date.now(), code);
+      const { svg, bindFunctions } = await mermaid.render('m' + Date.now(), code);
       box.innerHTML = svg; bindFunctions?.(box);
     } catch (e) {
-      box.innerHTML = `<pre style="color:red">Mermaid error:\n${e.message||e}</pre>`;
+      box.innerHTML = `<pre style="color:red">Mermaid error:\n${e.message || e}</pre>`;
     }
   }
 
-  /* ---------- misc ---------- */
+  /* ========== export & clipboard ======================================== */
+  $('#copy-md').onclick = () => navigator.clipboard.writeText($('#mermaid-code').value);
+  $('#dl-md').onclick = () => {
+    const blob = new Blob([$('#mermaid-code').value], { type: 'text/markdown' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `diagram_${Date.now()}.mmd`
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  $('#copy-svg').onclick = async () => {
+    const svg = $('#m-preview svg');
+    if (!svg) return alert('Nothing to copy');
+    try {
+      const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/svg+xml': blob })]);
+    } catch {            // fallback → plain text
+      await navigator.clipboard.writeText(svg.outerHTML);
+    }
+  };
+
+  $('#dl-png').onclick = async () => {
+    const svgEl = $('#m-preview svg');
+    if (!svgEl) return alert('Nothing to export');
+    // Lazy-load canvg only when needed
+    if (!window.Canvg) {
+      await new Promise(r => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/canvg@3.0.10/lib/umd.min.js';
+        s.onload = r; document.head.appendChild(s);
+      });
+    }
+    const canvas = document.createElement('canvas');
+    const bbox = svgEl.getBBox();
+    canvas.width = bbox.width + 20; canvas.height = bbox.height + 20;
+    const ctx = canvas.getContext('2d');
+    const v = await Canvg.fromString(ctx, svgEl.outerHTML);
+    await v.render();
+    canvas.toBlob(blob => {
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `diagram_${Date.now()}.png`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  };
+
+  /* ========== autosave restore ========================================== */
+  $('#restore').onclick = () => {
+    const data = localStorage.getItem(LS_KEY);
+    if (!data) return alert('No autosave found.');
+    if (!confirm('Replace the current diagram with the last autosave?')) return;
+    try { restore(JSON.parse(data)); } catch { alert('Autosave corrupted'); }
+  };
+  function restore(saved) {
+    roots.length = 0; saved.forEach(top => roots.push(top));
+    // fix idCounter
+    idCounter = 0; traverse({children: roots}, n => {
+      const num = +n.id.slice(1); if (num >= idCounter) idCounter = num + 1;
+    });
+    renderEditor(); update();
+  }
+
+  /* ========== misc controls ============================================= */
   $('#add-root').onclick = () => {
     roots.push(createNode(0, 'New root'));
     renderEditor(); update();
   };
   $('#mode').onchange = update;
 
-  /* ---------- init ---------- */
-  mermaid.initialize({startOnLoad:false});
+  /* ========== init ======================================================= */
+  mermaid.initialize({ startOnLoad: false });
+  // Load autosave silently on first run
+  const first = localStorage.getItem(LS_KEY);
+  if (first) try { restore(JSON.parse(first)); } catch { roots.push(createNode(0, 'Main topic')); }
+  else roots.push(createNode(0, 'Main topic'));
   renderEditor(); update();
 })();
 </script>
