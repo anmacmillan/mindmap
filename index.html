@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mermaid Mind-Map Builder – live preview</title>
+
+  <!-- Bundled Mermaid 10.9.1 (so the file works over file:// ) -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+  <style>
+    body{font-family:system-ui,sans-serif;margin:1.2rem}
+    #mindmap-editor{margin-bottom:1rem}
+    .node{margin-left:1rem;display:flex;align-items:center;gap:.4rem}
+    .node input{width:16rem}
+    textarea{width:100%;resize:vertical}
+    #preview-box{border:1px solid #ddd;padding:.8rem;border-radius:6px}
+  </style>
+</head>
+<body>
+<h1>Mermaid Mind-Map Builder</h1>
+
+<div id="mindmap-editor"></div>
+<button id="add-root">Add root</button>
+<hr>
+
+<h2>Mermaid Markdown</h2>
+<textarea id="mermaid-code" rows="8" spellcheck="false"></textarea><br>
+<button id="copy-md">Copy to clipboard</button>
+<button id="download-md">Download .md</button>
+
+<h2>Preview</h2>
+<div id="preview-box">
+  <div id="m-preview" class="mermaid"></div>
+</div>
+
+<script>
+/* ------------------------------------------------ data model --- */
+let idCounter = 0;
+const roots = [];         // array of root nodes
+const newNode = (depth)=>({id:`n${idCounter++}`,text:depth? 'Sub-topic':'New Topic',depth,children:[]});
+roots.push(newNode(0));
+
+/* ------------------------------------------------ dom helpers --- */
+const $ = (sel,root=document)=>root.querySelector(sel);
+
+/* ------------------------------------------- editor rendering --- */
+function renderEditor(){
+  const wrap=$("#mindmap-editor");
+  wrap.innerHTML='';
+  roots.forEach(n=>renderNode(n,wrap));
+}
+function renderNode(node,container){
+  const d=document.createElement('div');
+  d.className='node';
+  d.style.marginLeft=`${node.depth}rem`;
+  d.dataset.id=node.id;                      // for event delegation
+  d.innerHTML=`<input value="${node.text}"><button>+</button>`;
+  container.append(d);
+  node.children.forEach(c=>renderNode(c,container));
+}
+
+/* --------------------------------------- update from the editor --*/
+$("#mindmap-editor").addEventListener('input',e=>{
+  if(e.target.tagName!=='INPUT')return;
+  const id=e.target.parentElement.dataset.id;
+  findNode(id).text=e.target.value;
+  liveRender();                 // no debounce ⇒ immediate
+});
+$("#mindmap-editor").addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  const pId=e.target.parentElement.dataset.id;
+  const parent=findNode(pId);
+  const child=newNode(parent.depth+1);
+  parent.children.push(child);
+  renderEditor();
+  liveRender();
+});
+$("#add-root").onclick=()=>{roots.push(newNode(0));renderEditor();liveRender();};
+
+/* ------------------------------------------- serialization -------*/
+function findNode(id,list=roots){
+  for(const n of list){
+    if(n.id===id) return n;
+    const f=findNode(id,n.children);
+    if(f) return f;
+  }
+}
+function asMermaid(mindmap=true){
+  let out=mindmap?'mindmap\n':'graph TD\n';
+  const walk=(node,prefix)=>{
+    const label=node.text.replace(/"/g,'\\"');
+    if(mindmap){
+      out+='  '.repeat(node.depth)+label+'\n';
+    }else if(prefix){
+      out+=`  ${prefix} --> ${node.id}("${label}")\n`;
+    }
+    node.children.forEach(c=>walk(c,mindmap?undefined:node.id));
+  };
+  roots.forEach(r=>walk(r));
+  return out;
+}
+
+/* ------------------------------------------ live preview ---------*/
+function liveRender(){
+  const md=asMermaid(true);
+  $("#mermaid-code").value=md;
+  const tgt=$("#m-preview");
+  tgt.textContent=md;
+  mermaid.render('generated',md).then(({svg})=>tgt.innerHTML=svg);
+}
+
+/* ------------------------------------------------ export UI ------*/
+$("#copy-md").onclick=()=>navigator.clipboard.writeText($("#mermaid-code").value);
+$("#download-md").onclick=()=>{
+  const blob=new Blob([$("#mermaid-code").value],{type:'text/markdown'});
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:'mindmap.md'});
+  a.click();URL.revokeObjectURL(a.href);
+};
+
+/* ------------------------------------------------ startup --------*/
+mermaid.initialize({startOnLoad:false});
+renderEditor();
+liveRender();
+</script>
+</body>
+</html>
