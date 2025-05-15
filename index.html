@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Mermaid Builder – live, shapes, colours, icons</title>
+<title>Mermaid Builder – live, colours, shapes, icons</title>
 
-<!-- Mermaid 10.9.1 – safe for file:// and GitHub Pages -->
+<!-- Mermaid 10.9.1 – works over file:// and GitHub Pages -->
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 
 <style>
@@ -40,15 +40,12 @@ section{margin-bottom:1rem}
   <button class="color" data-color="blue"   style="background:#90caf9"></button>
   <button class="color" data-color="yellow" style="background:#fff59d"></button>
 
-  <strong>Shapes:</strong>
-  <button data-shape="default">[ ]</button>
-  <button data-shape="square">[■]</button>
+  <strong>Shapes (flowchart only):</strong>
+  <button data-shape="rect">[ ]</button>
   <button data-shape="rounded">( )</button>
   <button data-shape="circle">(( ))</button>
   <button data-shape="diamond">{ }</button>
   <button data-shape="hexagon">{{ }}</button>
-  <button data-shape="bang">))!((</button>
-  <button data-shape="cloud">)☁️(</button>
 
   <strong>Icons (Font Awesome):</strong>
   <button data-icon="fa fa-balance-scale">⚖️</button>
@@ -87,8 +84,9 @@ const newNode = depth => ({
   text: depth ? 'Sub-topic' : 'New Topic',
   depth,
   children: [],
-  shape: 'default',   // default | square | rounded | circle | diamond | hexagon | bang | cloud
-  color: null
+  shape: 'rect',      // for flowchart mode
+  color: null,
+  icon: null          // Font Awesome class string
 });
 roots.push(newNode(0));
 
@@ -130,33 +128,19 @@ function renderNode(node, container) {
 
 /* ---------- serialisation helpers ---------------------------- */
 const cls = c => `cls_${c}`;
-const shapeWrapMind = (shape, lbl) => {
-  switch (shape) {
-    case 'square':  return `[${lbl}]`;
-    case 'rounded': return `(${lbl})`;
-    case 'circle':  return `((${lbl}))`;
-    case 'diamond': return `{${lbl}}`;
-    case 'hexagon': return `{{${lbl}}}`;
-    case 'bang':    return `))${lbl}((`;
-    case 'cloud':   return `)${lbl}(`;
-    default:        return lbl;
-  }
-};
-const shapeWrapFlow = (shape, lbl) => {
+const shapeWrap = (shape, lbl) => {     /* flowchart only */
   switch (shape) {
     case 'rounded': return `("${lbl}")`;
     case 'diamond': return `{${lbl}}`;
-    case 'circle':  return `((${lbl}))`;
+    case 'circle' : return `((${lbl}))`;
     case 'hexagon': return `{{${lbl}}}`;
-    case 'stadium': return `([${lbl}])`;
-    default:        return `[${lbl}]`;
+    default       : return `[${lbl}]`;  // rect
   }
 };
-
-function collectColours(set = new Set(), list = roots) {
+function findColours(set = new Set(), list = roots) {
   list.forEach(n => {
     if (n.color) set.add(n.color);
-    collectColours(set, n.children);
+    findColours(set, n.children);
   });
   return set;
 }
@@ -173,14 +157,15 @@ function toMermaid(mode) {
   if (mode === 'mindmap') {
     let out = 'mindmap\\n';
     const walk = n => {
-      let label = shapeWrapMind(n.shape, n.text);
-      if (n.color) label += ':::' + cls(n.color);
+      let label = n.text + (n.color ? ':::' + cls(n.color) : '');
       out += '  '.repeat(n.depth) + label + '\\n';
-      // icons: look for pattern ::icon(... already in text)
+      if (n.icon) {
+        out += '  '.repeat(n.depth + 1) + '::icon(' + n.icon + ')\\n';
+      }
       n.children.forEach(walk);
     };
     roots.forEach(walk);
-    collectColours().forEach(c => { out += `classDef ${cls(c)} fill:${c};\\n`; });
+    findColours().forEach(c => { out += `classDef ${cls(c)} fill:${c};\\n`; });
     return out;
   }
 
@@ -188,9 +173,9 @@ function toMermaid(mode) {
   let out = 'graph TD\\n';
   const styles = [];
   const walk = (n, parent) => {
-    out += `  ${n.id}${shapeWrapFlow(n.shape, n.text)}\\n`;
+    out += `  ${n.id}${shapeWrap(n.shape, n.text)}\\n`;
     if (n.color) styles.push(`style ${n.id} fill:${n.color}`);
-    if (parent) out += `  ${parent.id} --> ${n.id}\\n`;
+    if (parent)  out += `  ${parent.id} --> ${n.id}\\n`;
     n.children.forEach(c => walk(c, n));
   };
   roots.forEach(r => walk(r, null));
@@ -203,12 +188,12 @@ function renderMermaid(md) {
   tgt.textContent = md;
   mermaid.render('generated', md)
     .then(({ svg }) => { tgt.innerHTML = svg; })
-    .catch(err => { tgt.innerHTML =
+    .catch(err  => { tgt.innerHTML =
       '<pre style="color:red">' + err.message + '</pre>'; });
 }
 
 /* ---------- model ↔ code sync -------------------------------- */
-let manualEdit = false;         // true while user typing in textarea
+let manualEdit = false;
 function modelChanged() {
   if (manualEdit) return;
   const md = toMermaid($('#mode').value);
@@ -226,28 +211,19 @@ $('#toolbar').addEventListener('click', e => {
   if (!currentNodeId) return;
   const node = findNode(currentNodeId);
 
-  /* colour */
   if (e.target.dataset.color) {
     node.color = e.target.dataset.color;
     resetManual(); modelChanged(); return;
   }
-
-  /* shape */
   if (e.target.dataset.shape) {
     node.shape = e.target.dataset.shape;
     resetManual(); modelChanged(); return;
   }
-
-  /* icon */
-  if (e.target.dataset.icon && currentInput) {
-    const ic = e.target.dataset.icon;
-    const insert = ' ::icon(' + ic + ')';
-    const pos = currentInput.selectionStart;
-    currentInput.setRangeText(insert, pos, pos, 'end');
-    currentInput.dispatchEvent(new Event('input'));
+  if (e.target.dataset.icon) {
+    node.icon = e.target.dataset.icon;
+    resetManual(); modelChanged();
   }
 });
-
 function findNode(id, list = roots) {
   for (const n of list) {
     if (n.id === id) return n;
@@ -256,7 +232,7 @@ function findNode(id, list = roots) {
   }
 }
 
-/* ---------- export buttons ----------------------------------- */
+/* ---------- export & misc ------------------------------------ */
 $('#copy-md').onclick = () =>
   navigator.clipboard.writeText($('#mermaid-code').value);
 $('#download-md').onclick = () => {
@@ -267,8 +243,6 @@ $('#download-md').onclick = () => {
   });
   a.click(); URL.revokeObjectURL(a.href);
 };
-
-/* ---------- add root & mode change --------------------------- */
 $('#add-root').onclick = () => {
   roots.push(newNode(0));
   renderEditor(); resetManual(); modelChanged();
